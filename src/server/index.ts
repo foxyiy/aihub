@@ -7,10 +7,10 @@ import { registerMemoryRoutes } from "./routes/memory.js";
 import { registerSessionRoutes } from "./routes/sessions.js";
 
 export async function startServer(port = 8642): Promise<void> {
-  const db = initDatabase();
+  const db = await initDatabase();
   const app = Fastify({ logger: false });
 
-  app.get("/health", () => ({ status: "ok", version: "0.1.0" }));
+  app.get("/health", () => ({ status: "ok", version: "0.2.0" }));
 
   registerProjectRoutes(app, db);
   registerRulesRoutes(app);
@@ -21,7 +21,6 @@ export async function startServer(port = 8642): Promise<void> {
   await app.listen({ port, host: "0.0.0.0" });
   console.log(`AIHub server running on http://0.0.0.0:${port}`);
 
-  // Graceful shutdown
   const shutdown = () => { db.close(); process.exit(0); };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);

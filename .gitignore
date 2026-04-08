@@ -5,4 +5,5 @@ dist/
 *.js.map
 *.d.ts.map
 !bin/
+!src/types/
 .aihub-chat.lock

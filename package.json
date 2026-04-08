@@ -1,0 +1,46 @@
+{
+  "name": "aihub",
+  "version": "0.1.0",
+  "description": "Proxy layer for AI coding agents — one data source, all agents, everywhere",
+  "type": "module",
+  "bin": {
+    "aihub": "./dist/bin/aihub.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/bin/aihub.js",
+    "test": "vitest"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "claude",
+    "codex",
+    "aider",
+    "proxy",
+    "memory"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.8.0",
+    "chalk": "^5.6.2",
+    "commander": "^14.0.3",
+    "fastify": "^5.8.4",
+    "gray-matter": "^4.0.3",
+    "js-yaml": "^4.1.1",
+    "nanoid": "^5.1.7",
+    "ora": "^9.3.0",
+    "simple-git": "^3.35.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^25.5.2",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.3"
+  }
+}

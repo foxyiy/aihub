@@ -1,51 +1,53 @@
 # AIHub
 
-**AI 编程 Agent 的统一代理层 — 一份数据，所有 Agent，到处运行。**
+**跨 AI Agent 的统一代理层 — 统一数据管理，无缝切换 Agent，多机实时同步。**
 
 ---
 
-## 这是什么
+## 项目概述
 
-你用 Claude Code 写了半天代码，积累了一堆上下文和决策记录。现在想切到 CodeBuddy 继续——但 CodeBuddy 什么都不知道。
+AIHub 是 AI 编程助手（Claude Code、CodeBuddy、Codex、Aider 等）的统一代理层。它解决多 Agent 并行使用时的核心痛点：
 
-AIHub 解决这个问题。它是一个代理层，坐在你和所有 AI Agent 之间：
+- **数据孤岛**：各 Agent 独立维护配置和上下文，无法互通
+- **上下文断裂**：切换 Agent 时，之前积累的知识和决策丢失
+- **重复配置**：编码规范需要在每个 Agent 各写一份（CLAUDE.md、.cursorrules、AGENTS.md...）
+- **多机割裂**：本地和服务器的 Agent 无法共享数据
+
+### 核心能力
+
+| 能力 | 说明 |
+|------|------|
+| **统一数据管理** | 规则、记忆、上下文、会话历史集中存储于 AIHub Server，所有 Agent 共享 |
+| **跨 Agent 记忆** | Agent A 产生的知识和决策，Agent B 自动获取 |
+| **格式翻译** | 一份源数据自动翻译为各 Agent 的原生格式（CLAUDE.md、AGENTS.md、.cursorrules 等） |
+| **多机同步** | 多台机器的 CLI 连接同一个 Server，数据实时互通 |
+| **零侵入** | Agent 运行时完全接管终端，交互体验无损 |
+
+## 系统架构
 
 ```
-你 → AIHub → Claude Code / CodeBuddy / Codex / Aider / ...
-        │
-        └── 统一存储：规则、记忆、上下文、会话历史
+  本地机器                                远程服务器
+  ┌───────────────────┐                  ┌───────────────────┐
+  │  aihub CLI        │                  │  aihub CLI        │
+  │  + Claude Code    │                  │  + CodeBuddy      │
+  │  + CodeBuddy      │                  │  + Codex          │
+  └─────────┬─────────┘                  └─────────┬─────────┘
+            │              REST API                 │
+            └──────────┐         ┌──────────────────┘
+                       ▼         ▼
+                 ┌─────────────────────┐
+                 │    AIHub Server     │
+                 │                     │
+                 │  Rules · Memory     │
+                 │  Context · Sessions │
+                 │  MCP Configs        │
+                 └─────────────────────┘
 ```
 
-- **一份数据**：所有 Agent 共享同一套规则、记忆和项目上下文
-- **无缝切换**：Claude 积累的知识，CodeBuddy 直接就知道
-- **零侵入**：Agent 的交互体验完全不变，颜色、快捷键、TUI 全部正常
-- **多机互通**：本地和服务器连同一个 AIHub Server，数据实时共享
+- **Server**：常驻后台进程，持有全部数据，提供 REST API
+- **CLI**：无状态客户端，通过 API 与 Server 交互，调用底层 Agent
 
-## 架构
-
-```
-笔记本                             云服务器
-┌────────────────┐                ┌────────────────┐
-│ aihub CLI      │                │ aihub CLI      │
-│ + Claude Code  │                │ + CodeBuddy    │
-│ + CodeBuddy    │                │ + Codex        │
-└───────┬────────┘                └───────┬────────┘
-        │            HTTP API             │
-        └───────────┐    ┌────────────────┘
-                    ▼    ▼
-              ┌──────────────┐
-              │ AIHub Server │
-              │              │
-              │ 规则 · 记忆   │
-              │ 上下文 · 会话 │
-              └──────────────┘
-```
-
-**Server** 持有所有数据，**CLI** 是无状态客户端。数据全在你自己的机器上，不上传任何外部服务。
-
-## 快速开始
-
-### 安装
+## 安装
 
 ```bash
 git clone git@github.com:foxyiy/aihub.git
@@ -55,194 +57,184 @@ npm run build
 npm link
 ```
 
-### 启动 Server
+## 使用方式
+
+### 1. 启动 Server
 
 ```bash
-# 前台运行（开发/测试）
+# 前台运行
 aihub server start -f
 
 # 后台运行
 aihub server start
+
+# 检查状态
+aihub server status
 ```
 
-Server 默认跑在 `http://0.0.0.0:8642`。
+Server 默认监听 `0.0.0.0:8642`。
 
-### 注册项目
+### 2. 注册项目
 
 ```bash
 cd /path/to/your/project
 aihub init
 ```
 
-### 添加记忆
+### 3. 管理数据
 
 ```bash
-aihub memory add "数据库选了 PostgreSQL，因为需要 JSONB" -t "db,architecture" --type decision
-aihub memory add "auth 模块使用 middleware 模式" -t "auth" --type decision
-aihub memory add "不要修改 legacy/ 目录的代码" --type warning
+# 添加记忆
+aihub memory add "项目使用 PostgreSQL 数据库" -t "db,architecture" --type decision
+aihub memory add "auth 模块采用 middleware 模式" -t "auth" --type decision
+
+# 查看记忆
+aihub memory list
+aihub memory search "auth"
+
+# 查看项目状态
+aihub status
 ```
 
-### 使用 Agent
+### 4. 通过代理层使用 Agent
 
 ```bash
-# 通过 AIHub 启动 Agent（自动注入上下文和记忆）
+# 启动 Agent（自动注入规则、上下文和记忆）
 aihub chat "重构 auth 模块" --agent codebuddy
-aihub chat "写测试" --agent claude-internal
+aihub chat "编写单元测试" --agent claude-internal
 
-# Agent 退出后，文件变更自动记录为记忆
-# 想换个 Agent 继续上次的工作：
+# 切换 Agent 继续上一次任务
 aihub chat --switch claude-internal
 ```
 
-### 查看状态
+### 5. 导出为 Agent 原生格式
 
 ```bash
-aihub status
-
-  AIHub — my-project
-  ─────────────────────────────────
-  📋 Rules:     2 files
-  📝 Context:   1 files
-  🧠 Memories:  12 entries
-  💬 Sessions:  5 recent
-  🤖 Agents:    Claude Code Internal, CodeBuddy
-  🖥  Server:    running
-```
-
-### 导出到 Agent 原生格式
-
-```bash
-# 从 AIHub 数据生成所有 Agent 的配置文件
+# 导出到所有支持的 Agent 格式
 aihub export
 
-# 生成：CLAUDE.md, AGENTS.md, .cursorrules, .windsurfrules, copilot-instructions.md
-
-# 只生成某个 Agent 的
+# 指定 Agent
 aihub export --agent claude
 
-# 预览不写入
+# 预览（不写入文件）
 aihub export --dry-run
 ```
 
-## 多机使用
+生成文件：`CLAUDE.md`、`AGENTS.md`、`.cursorrules`、`.windsurfrules`、`.github/copilot-instructions.md`
 
-在你的服务器上启动 Server：
+### 6. 多机同步
+
+远程服务器启动 Server：
 
 ```bash
 ssh your-server "cd ~/aihub && node dist/src/server/run.js 8642"
 ```
 
-本地配置连接远程 Server：
+本地客户端指向远程 Server：
 
 ```bash
 echo 'serverUrl: "http://your-server-ip:8642"' > ~/.aihub-client.yaml
 ```
 
-之后所有 `aihub` 命令自动连远端，本地和服务器共享同一份数据。
+配置完成后，所有 `aihub` 命令自动连接远端 Server。
 
-## 全部命令
+## 命令参考
 
-```bash
-aihub server start [-f]          # 启动 Server（-f 前台）
-aihub server status              # 检查 Server 状态
-
-aihub init                       # 注册当前项目
-aihub status                     # 状态总览
-
-aihub chat [task] --agent <name> # 代理层启动 Agent
-aihub chat --switch <name>       # 换 Agent 继续上次工作
-
-aihub memory list                # 列出记忆
-aihub memory search <query>      # 搜索记忆
-aihub memory add <content>       # 添加记忆
-aihub memory delete <id>         # 删除记忆
-
-aihub sessions list              # 列出会话历史
-aihub sessions show <id>         # 查看会话详情
-
-aihub export [--agent <name>]    # 导出为 Agent 原生格式
-```
+| 命令 | 说明 |
+|------|------|
+| `aihub server start [-f]` | 启动 Server（`-f` 前台运行） |
+| `aihub server status` | 检查 Server 运行状态 |
+| `aihub init` | 注册当前项目到 Server |
+| `aihub status` | 显示项目状态总览 |
+| `aihub chat [task] --agent <name>` | 通过代理层启动 Agent |
+| `aihub chat --switch <name>` | 切换 Agent 继续上一次任务 |
+| `aihub memory list` | 列出项目记忆 |
+| `aihub memory search <query>` | 搜索记忆 |
+| `aihub memory add <content> [-t tags] [--type type]` | 添加记忆 |
+| `aihub memory delete <id>` | 删除记忆 |
+| `aihub sessions list` | 列出会话历史 |
+| `aihub sessions show <id>` | 查看会话详情 |
+| `aihub export [--agent name] [--dry-run]` | 导出为 Agent 原生配置文件 |
 
 ## 支持的 Agent
 
-| Agent | CLI 命令 | 上下文注入方式 |
-|-------|---------|--------------|
+| Agent | 命令 | 上下文注入方式 |
+|-------|------|--------------|
 | Claude Code | `claude` | `--append-system-prompt` |
 | Claude Code Internal | `claude-internal` | `--append-system-prompt` |
 | CodeBuddy | `codebuddy` | `--append-system-prompt` |
-| OpenAI Codex | `codex` | 写入 AGENTS.md |
-| Aider | `aider` | `--message` |
+| OpenAI Codex | `codex` | AGENTS.md 文件注入 |
+| Aider | `aider` | `--message` 参数注入 |
 
-添加新 Agent 只需在 `src/drivers/` 下新增一个文件，实现 `detect/prepare/run/cleanup` 四个方法。
+扩展支持新 Agent：在 `src/drivers/` 下新增 Driver 文件，实现 `detect`、`prepare`、`run`、`cleanup` 四个接口方法即可。
 
 ## 工作原理
 
 ```
-aihub chat "重构 auth" --agent codebuddy
+aihub chat "task" --agent codebuddy
 
-  1. 连接 Server，拉取 rules + context + memory
-  2. 翻译为 Agent 能理解的格式
-  3. 通过 --append-system-prompt 注入上下文
-  4. stdio: inherit — Agent 完全接管终端
-  5. Agent 退出后，git diff 检测文件变更
-  6. 变更信息存入 Server 作为记忆
-  7. 会话归档
+  1. 连接 Server，拉取项目的 rules、context、memory
+  2. 通过翻译层转换为目标 Agent 可理解的格式
+  3. 通过 --append-system-prompt 注入上下文（不修改任何项目文件）
+  4. Agent 以 stdio: inherit 模式启动，完全接管终端
+  5. Agent 退出后，通过 git diff 检测文件变更
+  6. 变更信息自动存入 Server 作为记忆
+  7. 会话记录归档
 ```
-
-**关键设计：** Agent 运行时 AIHub 完全不干预。Agent 拿到真实终端，体验跟直接使用一样。AIHub 只在启动前（注入上下文）和退出后（回收数据）做事。
 
 ## 数据存储
 
-所有数据在 Server 端的 `~/.aihub-server/`：
+Server 端数据目录 `~/.aihub-server/`：
 
 ```
 ~/.aihub-server/
-├── db/aihub.db              # SQLite — 记忆、会话
+├── db/aihub.db                  # SQLite（记忆、会话等结构化数据）
 ├── projects/
-│   └── my-project/
-│       ├── rules/*.md       # 编码规范（Markdown）
-│       ├── context/*.md     # 项目知识（Markdown）
-│       └── mcp/servers.json # MCP 工具配置
+│   └── <project-name>/
+│       ├── rules/*.md           # 编码规范（Markdown）
+│       ├── context/*.md         # 项目上下文（Markdown）
+│       └── mcp/servers.json     # MCP 工具配置
 └── global/
-    ├── rules/               # 全局规则
-    └── context/             # 全局上下文
+    ├── rules/*.md               # 全局规则（所有项目生效）
+    └── context/*.md             # 全局上下文
 ```
 
-- 人写的（规则、上下文）用 **Markdown** — 可读性优先
-- 机器生成的（记忆、会话）用 **SQLite** — 查询效率优先
-- 项目代码仓库里**不留任何 AIHub 数据**
+- 人工维护的数据（规则、上下文）使用 Markdown 格式
+- 自动生成的数据（记忆、会话）使用 SQLite 存储
+- 所有数据存储于用户自有服务器，不依赖任何第三方云服务
 
-## 未来规划
+## 规划
 
 ### 近期
 
-- [ ] **Import 翻译层** — 从 Agent 原生格式（CLAUDE.md, .cursorrules）自动导入到 AIHub
-- [ ] **Agent 日志解析** — Agent 退出后自动从 Claude/CodeBuddy 的会话日志提取记忆
-- [ ] **MCP Server 模式** — 提供 MCP Server，Agent 运行时可主动调用 `remember()`/`recall()`
-- [ ] **Token 鉴权** — Server API 加认证，安全暴露到公网
+- [ ] Import 翻译层：从 Agent 原生格式自动导入到 AIHub
+- [ ] Agent 日志解析：从 Claude/CodeBuddy 的会话日志中自动提取记忆
+- [ ] MCP Server 模式：提供 MCP 接口，支持 Agent 运行时主动读写记忆
+- [ ] API 鉴权：Server 端增加 Token 认证
 
 ### 中期
 
-- [ ] **语义搜索** — 记忆向量化，recall 从关键词匹配升级为语义匹配
-- [ ] **IDE Agent 支持** — 通过 MCP 接入 Cursor、Copilot 等 IDE 内置 Agent
-- [ ] **团队共享** — 多人连同一个 Server，共享项目规则和记忆
-- [ ] **Web Dashboard** — 浏览器管理记忆、规则、会话历史
+- [ ] 语义搜索：基于向量化实现记忆的语义匹配
+- [ ] IDE Agent 支持：通过 MCP 协议接入 Cursor、Copilot 等 IDE 内置 Agent
+- [ ] 团队协作：多用户共享 Server，协同管理项目知识
+- [ ] Web 管理界面：浏览器端管理规则、记忆和会话
 
 ### 远期
 
-- [ ] **AIConfig Spec** — 推动 `.aiconfig/` 成为 AI Agent 配置的行业标准
-- [ ] **配置市场** — 社区分享和复用项目配置模板
-- [ ] **企业版** — 组织级配置继承、RBAC 权限控制、审计日志
+- [ ] AIConfig 标准规范：推动 AI Agent 配置格式的行业标准化
+- [ ] 配置模板市场：社区共享和复用项目配置
+- [ ] 企业版：组织级配置继承、权限控制、审计日志
 
 ## 技术栈
 
-| 组件 | 技术 |
-|------|------|
-| Server | Fastify + SQLite (better-sqlite3) |
+| 组件 | 技术选型 |
+|------|---------|
+| Server | Fastify + SQLite (better-sqlite3, WAL mode) |
 | CLI | Commander.js |
 | 语言 | TypeScript (strict mode) |
+| 构建 | tsc |
 | 进程管理 | Node.js child_process (stdio: inherit) |
-| 配置 | YAML (js-yaml) + Markdown (gray-matter) |
+| 配置格式 | YAML (js-yaml) + Markdown (gray-matter) |
 
 ## License
 

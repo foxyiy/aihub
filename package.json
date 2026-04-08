@@ -7,8 +7,8 @@
     "aihub": "./dist/bin/aihub.js"
   },
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
+    "build": "npx tsc",
+    "dev": "npx tsc --watch",
     "start": "node dist/bin/aihub.js",
     "test": "vitest"
   },

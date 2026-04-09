@@ -81,9 +81,15 @@ export function registerChatCommand(program: Command): void {
         // Inject context via system prompt
         await driver.prepare(ctx.content, projectPath);
 
-        // Inject MCP configs into agent config files
-        const mcpConfig = await api.getMcp(projectId);
-        const mcpServers = (mcpConfig.servers ?? {}) as McpServers;
+        // Inject MCP configs into agent config files (global + project)
+        const [mcpConfig, globalMcpConfig] = await Promise.all([
+          api.getMcp(projectId),
+          api.getGlobalMcp(),
+        ]);
+        const mcpServers = {
+          ...((globalMcpConfig.servers ?? {}) as McpServers),
+          ...((mcpConfig.servers ?? {}) as McpServers),
+        };
         if (Object.keys(mcpServers).length > 0) {
           injectMcp(agentName, projectPath, mcpServers);
           log.info(`MCP: ${Object.keys(mcpServers).length} servers injected`);

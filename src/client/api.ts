@@ -132,8 +132,19 @@ export async function getMcp(projectId: string): Promise<Record<string, unknown>
   return request(`/projects/${projectId}/mcp`) as Promise<Record<string, unknown>>;
 }
 
+export async function getGlobalMcp(): Promise<Record<string, unknown>> {
+  return request("/global/mcp") as Promise<Record<string, unknown>>;
+}
+
 export async function putMcp(projectId: string, data: Record<string, unknown>): Promise<{ ok: boolean }> {
   return request(`/projects/${projectId}/mcp`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  }) as Promise<{ ok: boolean }>;
+}
+
+export async function putGlobalMcp(data: Record<string, unknown>): Promise<{ ok: boolean }> {
+  return request("/global/mcp", {
     method: "PUT",
     body: JSON.stringify(data),
   }) as Promise<{ ok: boolean }>;

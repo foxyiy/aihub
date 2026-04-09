@@ -4,54 +4,73 @@ import * as os from "node:os";
 import * as api from "../client/api.js";
 
 /**
- * Scan local agent MCP configs and upload new ones to server.
- * Returns count of newly imported servers.
+ * Scan local agent MCP configs and upload to server.
+ * Global agent configs → Server global MCP
+ * Project agent configs → Server project MCP
  */
 export async function autoImportMcp(projectId: string): Promise<{ imported: number; names: string[] }> {
-  const collected: Record<string, unknown> = {};
+  const globalCollected: Record<string, unknown> = {};
+  const projectCollected: Record<string, unknown> = {};
 
-  // Claude global
+  // Claude global → Server global
   const claudeGlobal = path.join(os.homedir(), ".claude", "settings.local.json");
-  collectMcpFromJson(claudeGlobal, collected);
+  collectMcpFromJson(claudeGlobal, globalCollected);
 
-  // Claude project
-  const claudeProject = path.join(process.cwd(), ".claude", "settings.local.json");
-  collectMcpFromJson(claudeProject, collected);
-
-  // CodeBuddy project
-  const cbProject = path.join(process.cwd(), ".codebuddy", "settings.local.json");
-  collectMcpFromJson(cbProject, collected);
-
-  // CodeBuddy plugins
+  // CodeBuddy plugins → Server global
   const pluginsDir = path.join(os.homedir(), ".codebuddy", "plugins", "marketplaces");
   if (fs.existsSync(pluginsDir)) {
     for (const f of findFiles(pluginsDir, ".mcp.json")) {
       try {
         const data = JSON.parse(fs.readFileSync(f, "utf-8"));
         const servers = data.mcpServers ?? data;
-        Object.assign(collected, servers);
+        Object.assign(globalCollected, servers);
       } catch { /* skip */ }
     }
   }
 
-  if (Object.keys(collected).length === 0) return { imported: 0, names: [] };
+  // Claude project-level → Server project
+  const claudeProject = path.join(process.cwd(), ".claude", "settings.local.json");
+  collectMcpFromJson(claudeProject, projectCollected);
 
-  // Compare with server — only upload new ones
-  const current = await api.getMcp(projectId);
-  const existing = (current.servers ?? {}) as Record<string, unknown>;
-  const newNames: string[] = [];
+  // CodeBuddy project-level → Server project
+  const cbProject = path.join(process.cwd(), ".codebuddy", "settings.local.json");
+  collectMcpFromJson(cbProject, projectCollected);
 
-  for (const key of Object.keys(collected)) {
-    if (!(key in existing)) {
-      existing[key] = collected[key];
-      newNames.push(key);
+  const allNames: string[] = [];
+
+  // Upload global
+  if (Object.keys(globalCollected).length > 0) {
+    const current = await api.getGlobalMcp();
+    const existing = (current.servers ?? {}) as Record<string, unknown>;
+    for (const key of Object.keys(globalCollected)) {
+      if (!(key in existing)) {
+        existing[key] = globalCollected[key];
+        allNames.push(key);
+      }
+    }
+    if (allNames.length > 0) {
+      await api.putGlobalMcp({ servers: existing });
     }
   }
 
-  if (newNames.length === 0) return { imported: 0, names: [] };
+  // Upload project
+  if (Object.keys(projectCollected).length > 0) {
+    const current = await api.getMcp(projectId);
+    const existing = (current.servers ?? {}) as Record<string, unknown>;
+    const projNames: string[] = [];
+    for (const key of Object.keys(projectCollected)) {
+      if (!(key in existing)) {
+        existing[key] = projectCollected[key];
+        projNames.push(key);
+      }
+    }
+    if (projNames.length > 0) {
+      await api.putMcp(projectId, { servers: existing });
+      allNames.push(...projNames);
+    }
+  }
 
-  await api.putMcp(projectId, { servers: existing });
-  return { imported: newNames.length, names: newNames };
+  return { imported: allNames.length, names: allNames };
 }
 
 /**

@@ -69,8 +69,20 @@ export function getMcp(projectId: string): Record<string, unknown> {
   return JSON.parse(fs.readFileSync(fp, "utf-8"));
 }
 
+export function getGlobalMcp(): Record<string, unknown> {
+  const fp = path.join(getDataDir(), "global", "mcp", "servers.json");
+  if (!fs.existsSync(fp)) return { servers: {} };
+  return JSON.parse(fs.readFileSync(fp, "utf-8"));
+}
+
 export function putMcp(projectId: string, data: Record<string, unknown>): void {
   const dir = path.join(projectDir(projectId), "mcp");
+  ensureDir(dir);
+  fs.writeFileSync(path.join(dir, "servers.json"), JSON.stringify(data, null, 2), "utf-8");
+}
+
+export function putGlobalMcp(data: Record<string, unknown>): void {
+  const dir = path.join(getDataDir(), "global", "mcp");
   ensureDir(dir);
   fs.writeFileSync(path.join(dir, "servers.json"), JSON.stringify(data, null, 2), "utf-8");
 }

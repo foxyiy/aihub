@@ -5,6 +5,8 @@ import { registerRulesRoutes } from "./routes/rules.js";
 import { registerContextRoutes } from "./routes/context.js";
 import { registerMemoryRoutes } from "./routes/memory.js";
 import { registerSessionRoutes } from "./routes/sessions.js";
+import { registerMcpRoutes } from "./routes/mcp.js";
+import { registerSkillsRoutes } from "./routes/skills.js";
 
 export async function startServer(port = 8642): Promise<void> {
   const db = await initDatabase();
@@ -17,6 +19,8 @@ export async function startServer(port = 8642): Promise<void> {
   registerContextRoutes(app);
   registerMemoryRoutes(app, db);
   registerSessionRoutes(app, db);
+  registerMcpRoutes(app);
+  registerSkillsRoutes(app);
 
   await app.listen({ port, host: "0.0.0.0" });
   console.log(`AIHub server running on http://0.0.0.0:${port}`);

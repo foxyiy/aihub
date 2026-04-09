@@ -8,6 +8,11 @@ import { registerMemoryCommand } from "../src/commands/memory.js";
 import { registerSessionsCommand } from "../src/commands/sessions.js";
 import { registerStatusCommand } from "../src/commands/status.js";
 import { registerExportCommand } from "../src/commands/export.js";
+import { registerRulesCommand } from "../src/commands/rules.js";
+import { registerContextCommand } from "../src/commands/context.js";
+import { registerMcpCommand } from "../src/commands/mcp.js";
+import { registerImportCommand } from "../src/commands/import.js";
+import { registerSkillCommand } from "../src/commands/skill.js";
 
 const program = new Command();
 program
@@ -22,5 +27,10 @@ registerMemoryCommand(program);
 registerSessionsCommand(program);
 registerStatusCommand(program);
 registerExportCommand(program);
+registerRulesCommand(program);
+registerContextCommand(program);
+registerMcpCommand(program);
+registerImportCommand(program);
+registerSkillCommand(program);
 
 program.parse();

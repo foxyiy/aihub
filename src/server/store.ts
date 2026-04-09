@@ -55,6 +55,12 @@ export function putContext(projectId: string, filename: string, content: string)
   fs.writeFileSync(path.join(dir, filename), content, "utf-8");
 }
 
+export function deleteContext(projectId: string, filename: string): boolean {
+  const fp = path.join(projectDir(projectId), "context", filename);
+  if (fs.existsSync(fp)) { fs.unlinkSync(fp); return true; }
+  return false;
+}
+
 // ─── MCP ──────────────────────────────────────────────
 
 export function getMcp(projectId: string): Record<string, unknown> {
@@ -69,6 +75,28 @@ export function putMcp(projectId: string, data: Record<string, unknown>): void {
   fs.writeFileSync(path.join(dir, "servers.json"), JSON.stringify(data, null, 2), "utf-8");
 }
 
+// ─── Skills ──────────────────────────────────────────
+
+export function getSkills(projectId: string): MarkdownFile[] {
+  return readMarkdownDir(path.join(projectDir(projectId), "skills"));
+}
+
+export function getGlobalSkills(): MarkdownFile[] {
+  return readMarkdownDir(path.join(getDataDir(), "global", "skills"));
+}
+
+export function putSkill(projectId: string, filename: string, content: string): void {
+  const dir = path.join(projectDir(projectId), "skills");
+  ensureDir(dir);
+  fs.writeFileSync(path.join(dir, filename), content, "utf-8");
+}
+
+export function deleteSkill(projectId: string, filename: string): boolean {
+  const fp = path.join(projectDir(projectId), "skills", filename);
+  if (fs.existsSync(fp)) { fs.unlinkSync(fp); return true; }
+  return false;
+}
+
 // ─── Init project dirs ───────────────────────────────
 
 export function initProjectDirs(projectId: string): void {
@@ -76,6 +104,7 @@ export function initProjectDirs(projectId: string): void {
   ensureDir(path.join(base, "rules"));
   ensureDir(path.join(base, "context"));
   ensureDir(path.join(base, "mcp"));
+  ensureDir(path.join(base, "skills"));
 }
 
 // ─── Helpers ──────────────────────────────────────────

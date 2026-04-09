@@ -24,6 +24,7 @@ export async function initDatabase(): Promise<SqlJsDatabase> {
   fs.mkdirSync(path.join(DATA_DIR, "projects"), { recursive: true });
   fs.mkdirSync(path.join(DATA_DIR, "global", "rules"), { recursive: true });
   fs.mkdirSync(path.join(DATA_DIR, "global", "context"), { recursive: true });
+  fs.mkdirSync(path.join(DATA_DIR, "global", "skills"), { recursive: true });
 
   const SQL = await initSqlJs();
 

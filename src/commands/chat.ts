@@ -3,7 +3,12 @@ import chalk from "chalk";
 import * as api from "../client/api.js";
 import { buildContextString } from "../core/context-builder.js";
 import { captureSnapshot, computeChanges } from "../core/git-changes.js";
+import { extractMemoriesFromLogs } from "../core/memory-extractor.js";
 import { acquireLock, releaseLock } from "../core/lockfile.js";
+import { injectMcp, restoreMcp } from "../core/mcp-injector.js";
+import type { McpServers } from "../core/mcp-injector.js";
+import { injectSkills, restoreSkills } from "./skill.js";
+import { autoImportMcp, autoImportSkills } from "../core/auto-import.js";
 import { getDriver, detectAvailable } from "../drivers/registry.js";
 import * as log from "../utils/logger.js";
 
@@ -73,11 +78,31 @@ export function registerChatCommand(program: Command): void {
         const ctx = await buildContextString(projectId, agentName, { task: sessionTask, handoff });
         log.info(`Context: ${ctx.stats.rules} rules, ${ctx.stats.context} context, ${ctx.stats.memories} memories`);
 
-        // Inject
+        // Inject context via system prompt
         await driver.prepare(ctx.content, projectPath);
+
+        // Inject MCP configs into agent config files
+        const mcpConfig = await api.getMcp(projectId);
+        const mcpServers = (mcpConfig.servers ?? {}) as McpServers;
+        if (Object.keys(mcpServers).length > 0) {
+          injectMcp(agentName, projectPath, mcpServers);
+          log.info(`MCP: ${Object.keys(mcpServers).length} servers injected`);
+        }
+
+        // Inject skills into agent directories
+        const [skills, globalSkills] = await Promise.all([
+          api.getSkills(projectId),
+          api.getGlobalSkills(),
+        ]);
+        const allSkills = [...globalSkills, ...skills];
+        if (allSkills.length > 0) {
+          injectSkills(agentName, projectPath, allSkills);
+          log.info(`Skills: ${allSkills.length} injected`);
+        }
 
         // Git snapshot before
         const gitBefore = captureSnapshot(projectPath);
+        const startedAt = Date.now();
 
         log.success(`Launching ${chalk.cyan(driver.displayName)}...`);
         console.log(chalk.dim("─".repeat(50)));
@@ -89,6 +114,8 @@ export function registerChatCommand(program: Command): void {
 
         // Cleanup
         await driver.cleanup(projectPath);
+        restoreMcp();
+        restoreSkills();
 
         // Compute git changes
         log.dim("Collecting changes...");
@@ -108,6 +135,32 @@ export function registerChatCommand(program: Command): void {
           });
         }
 
+        // Extract memories from agent logs
+        log.dim("Extracting memories from agent logs...");
+        try {
+          const extracted = await extractMemoriesFromLogs(agentName, projectPath, startedAt);
+          for (const mem of extracted) {
+            await api.addMemory(projectId, mem.content, {
+              type: mem.type, tags: mem.tags, source_agent: agentName, source_session: session.id,
+            });
+          }
+          if (extracted.length > 0) {
+            log.info(`Extracted ${extracted.length} memories from agent logs.`);
+          }
+        } catch {
+          // Non-fatal — log extraction is best-effort
+        }
+
+        // Auto-import new MCP/skills that agent may have installed
+        try {
+          const mcp = await autoImportMcp(projectId);
+          if (mcp.imported > 0) log.info(`New MCP servers detected: ${mcp.names.join(", ")}`);
+          const sk = await autoImportSkills(projectId);
+          if (sk.imported > 0) log.info(`New skills detected: ${sk.names.join(", ")}`);
+        } catch {
+          // Non-fatal
+        }
+
         // Complete session
         await api.updateSession(projectId, session.id, { status: "completed" });
         log.success(`Session ${chalk.bold(session.id)} archived.`);
@@ -116,6 +169,8 @@ export function registerChatCommand(program: Command): void {
         log.dim(`To continue with another agent: aihub chat --switch claude-internal`);
 
       } finally {
+        restoreMcp();
+        restoreSkills();
         releaseLock(projectPath);
       }
     });

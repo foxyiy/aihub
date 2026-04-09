@@ -7,8 +7,8 @@
     "aihub": "./dist/bin/aihub.js"
   },
   "scripts": {
-    "build": "./node_modules/.bin/tsc",
-    "dev": "./node_modules/.bin/tsc --watch",
+    "build": "node node_modules/typescript/bin/tsc",
+    "dev": "node node_modules/typescript/bin/tsc --watch",
     "start": "node dist/bin/aihub.js",
     "test": "vitest"
   },

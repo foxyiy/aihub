@@ -28,12 +28,7 @@ export function registerUpdateCommand(program: Command): void {
 
         // build
         log.info("Building...");
-        // Try local tsc first, fall back to global
-        try {
-          execSync("./node_modules/.bin/tsc", { cwd: aihubDir, encoding: "utf-8", timeout: 30000 });
-        } catch {
-          execSync("node_modules/typescript/bin/tsc", { cwd: aihubDir, encoding: "utf-8", timeout: 30000 });
-        }
+        execSync("node node_modules/typescript/bin/tsc", { cwd: aihubDir, encoding: "utf-8", timeout: 30000 });
 
         log.success("AIHub updated successfully!");
 

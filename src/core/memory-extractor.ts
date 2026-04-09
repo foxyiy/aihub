@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import * as readline from "node:readline";
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 
 interface ExtractedMemory {
   content: string;
@@ -132,24 +132,44 @@ learned|项目使用 Client-Server 架构，CLI 是无状态客户端
 function summarizeWithAgent(agent: string, rawTexts: string[]): ExtractedMemory[] {
   const cli = getAgentCli(agent);
 
-  // Combine texts, truncate to avoid token limits
-  const combined = rawTexts
-    .filter(t => t.trim().length > 30)
-    .map(t => t.trim().slice(0, 500))
-    .join("\n---\n")
-    .slice(0, 8000);
+  // Compress: skip short/trivial, take last 200 chars of each (conclusions, not process)
+  const compressed = rawTexts
+    .filter(t => {
+      const s = t.trim();
+      if (s.length < 50) return false;
+      if (/^(ok|好的|好|done|完成|已|明白|没问题|你好|hello|我来|让我|let me)/i.test(s)) return false;
+      return true;
+    })
+    .map(t => {
+      const s = t.trim();
+      // Take first 200 chars (usually the conclusion/summary part)
+      return s.length > 200 ? s.slice(0, 200) + "..." : s;
+    });
 
-  if (combined.length < 50) return [];
+  if (compressed.length === 0) return [];
+
+  // Cap at ~3000 chars total to save tokens
+  let total = 0;
+  const selected: string[] = [];
+  for (const text of compressed) {
+    if (total + text.length > 3000) break;
+    selected.push(text);
+    total += text.length;
+  }
+
+  const input = SUMMARY_PROMPT + selected.join("\n---\n");
 
   try {
-    const result = execSync(
-      `${cli} -p "${SUMMARY_PROMPT}${combined.replace(/"/g, '\\"')}"`,
-      { encoding: "utf-8", timeout: 30000, stdio: ["pipe", "pipe", "pipe"] },
-    ).trim();
+    // Use stdin to pass content safely (no shell escaping issues)
+    const result = spawnSync(cli, ["-p", input], {
+      encoding: "utf-8",
+      timeout: 60000,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
 
-    return parseSummaryOutput(result);
+    if (result.status !== 0 || !result.stdout) return [];
+    return parseSummaryOutput(result.stdout.trim());
   } catch {
-    // Agent -p not available or failed, fall back to simple extraction
     return [];
   }
 }

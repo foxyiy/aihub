@@ -13,7 +13,7 @@ fi
 
 # Install dependencies
 echo "→ Installing dependencies..."
-npm install 2>&1 | tail -1
+npm install --include=dev 2>&1 | tail -1
 
 # Build
 echo "→ Building..."

@@ -22,13 +22,18 @@ export function registerUpdateCommand(program: Command): void {
         }
         console.log(pullResult);
 
-        // npm install
+        // npm install (include devDependencies for typescript)
         log.info("Installing dependencies...");
-        execSync("npm install", { cwd: aihubDir, encoding: "utf-8", timeout: 60000, stdio: "pipe" });
+        execSync("npm install --include=dev", { cwd: aihubDir, encoding: "utf-8", timeout: 60000, stdio: "pipe" });
 
         // build
         log.info("Building...");
-        execSync("./node_modules/.bin/tsc", { cwd: aihubDir, encoding: "utf-8", timeout: 30000 });
+        // Try local tsc first, fall back to global
+        try {
+          execSync("./node_modules/.bin/tsc", { cwd: aihubDir, encoding: "utf-8", timeout: 30000 });
+        } catch {
+          execSync("node_modules/typescript/bin/tsc", { cwd: aihubDir, encoding: "utf-8", timeout: 30000 });
+        }
 
         log.success("AIHub updated successfully!");
 

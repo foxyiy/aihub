@@ -5,58 +5,78 @@ import * as path from "node:path";
 import * as api from "../client/api.js";
 import * as log from "../utils/logger.js";
 
+function findProjectRoot(): string {
+  let dir = path.dirname(new URL(".", import.meta.url).pathname);
+  while (!fs.existsSync(path.join(dir, "package.json"))) {
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return dir;
+}
+
+function pullAndBuild(aihubDir: string): boolean {
+  log.info("Checking for updates...");
+
+  const pullResult = execSync("git pull", { cwd: aihubDir, encoding: "utf-8", timeout: 30000 }).trim();
+  if (pullResult.includes("Already up to date")) {
+    log.success("Already up to date.");
+    return false;
+  }
+  console.log(pullResult);
+
+  log.info("Installing dependencies...");
+  execSync("npm install --include=dev", { cwd: aihubDir, encoding: "utf-8", timeout: 60000, stdio: "pipe" });
+
+  log.info("Building...");
+  execSync("node node_modules/typescript/bin/tsc", { cwd: aihubDir, encoding: "utf-8", timeout: 30000 });
+
+  return true;
+}
+
 export function registerUpdateCommand(program: Command): void {
-  program
-    .command("update")
-    .description("Update AIHub to the latest version and restart server")
+  const update = program.command("update").description("Update AIHub CLI or server");
+
+  // aihub update client — 只拉代码编译，不碰 server
+  update.command("client")
+    .description("Update CLI only (git pull + build)")
     .action(async () => {
-      // 从 dist/src/commands/update.js 找到项目根目录
-      let aihubDir = path.dirname(new URL(".", import.meta.url).pathname);
-      // 往上找直到找到 package.json
-      while (!fs.existsSync(path.join(aihubDir, "package.json"))) {
-        const parent = path.dirname(aihubDir);
-        if (parent === aihubDir) break; // reached root
-        aihubDir = parent;
-      }
-
       try {
-        log.info("Checking for updates...");
+        const updated = pullAndBuild(findProjectRoot());
+        if (updated) log.success("CLI updated.");
+      } catch (e) {
+        log.error(`Update failed: ${(e as Error).message}`);
+        process.exit(1);
+      }
+    });
 
-        // git pull
-        const pullResult = execSync("git pull", { cwd: aihubDir, encoding: "utf-8", timeout: 30000 }).trim();
-        if (pullResult.includes("Already up to date")) {
-          log.success("Already up to date.");
-          return;
-        }
-        console.log(pullResult);
+  // aihub update server — 拉代码编译 + 重启 server
+  update.command("server")
+    .description("Update and restart the AIHub server")
+    .action(async () => {
+      const aihubDir = findProjectRoot();
+      try {
+        const updated = pullAndBuild(aihubDir);
 
-        // npm install (include devDependencies for typescript)
-        log.info("Installing dependencies...");
-        execSync("npm install --include=dev", { cwd: aihubDir, encoding: "utf-8", timeout: 60000, stdio: "pipe" });
-
-        // build
-        log.info("Building...");
-        execSync("node node_modules/typescript/bin/tsc", { cwd: aihubDir, encoding: "utf-8", timeout: 30000 });
-
-        log.success("AIHub updated successfully!");
-
-        // Restart server if running
+        // Restart server
         const serverWasRunning = await api.health();
-        if (serverWasRunning) {
+        if (serverWasRunning || updated) {
           log.info("Restarting server...");
 
           // Stop
           try {
-            const pids = execSync("lsof -ti :8642", { encoding: "utf-8" }).trim();
+            const pids = execSync("lsof -ti :8642 || fuser 8642/tcp 2>/dev/null", {
+              encoding: "utf-8", timeout: 5000,
+            }).trim();
             if (pids) {
-              for (const pid of pids.split("\n")) {
-                process.kill(parseInt(pid), "SIGTERM");
+              for (const pid of pids.split(/\s+/)) {
+                const n = parseInt(pid);
+                if (n > 0) process.kill(n, "SIGTERM");
               }
             }
           } catch { /* no process */ }
 
-          // Wait a moment for port release
-          await new Promise(r => setTimeout(r, 1000));
+          await new Promise(r => setTimeout(r, 1500));
 
           // Start in background
           const child = spawn("node", [path.join(aihubDir, "dist", "bin", "aihub.js"), "server", "start"], {
@@ -66,13 +86,14 @@ export function registerUpdateCommand(program: Command): void {
           });
           child.unref();
 
-          // Verify
           await new Promise(r => setTimeout(r, 2000));
           if (await api.health()) {
             log.success("Server restarted.");
           } else {
             log.warn("Server may need manual restart: aihub server start &");
           }
+        } else {
+          log.info("Server not running, skipping restart.");
         }
       } catch (e) {
         log.error(`Update failed: ${(e as Error).message}`);

@@ -1,5 +1,6 @@
 import type { Command } from "commander";
 import { execSync, spawn } from "node:child_process";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import * as api from "../client/api.js";
 import * as log from "../utils/logger.js";
@@ -9,7 +10,14 @@ export function registerUpdateCommand(program: Command): void {
     .command("update")
     .description("Update AIHub to the latest version and restart server")
     .action(async () => {
-      const aihubDir = path.resolve(new URL(".", import.meta.url).pathname, "..", "..");
+      // 从 dist/src/commands/update.js 找到项目根目录
+      let aihubDir = path.dirname(new URL(".", import.meta.url).pathname);
+      // 往上找直到找到 package.json
+      while (!fs.existsSync(path.join(aihubDir, "package.json"))) {
+        const parent = path.dirname(aihubDir);
+        if (parent === aihubDir) break; // reached root
+        aihubDir = parent;
+      }
 
       try {
         log.info("Checking for updates...");

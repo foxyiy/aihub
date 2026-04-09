@@ -18,7 +18,8 @@ export function registerChatCommand(program: Command): void {
     .description("Start a proxied chat session with an AI agent")
     .option("-a, --agent <name>", "Agent to use (claude, codebuddy, claude-internal, codex, aider)")
     .option("-s, --switch <name>", "Continue last session with a different agent")
-    .action(async (task: string | undefined, opts: { agent?: string; switch?: string }) => {
+    .option("-c, --continue <sessionId>", "Continue a specific historical session")
+    .action(async (task: string | undefined, opts: { agent?: string; switch?: string; continue?: string }) => {
       if (!(await api.health())) {
         log.error("Server not running. Start with: aihub server start");
         process.exit(1);
@@ -39,12 +40,38 @@ export function registerChatCommand(program: Command): void {
       const agentName = opts.switch ?? opts.agent ?? "claude";
       const sessionTask = task ?? "(interactive)";
 
-      // If --switch, load handoff from last session
+      // Build handoff context from previous session
       let handoff: string | undefined;
-      if (opts.switch) {
+      let continueSessionId: string | undefined;
+
+      if (opts.continue) {
+        // Continue a specific session by ID
+        const prev = await api.getSession(projectId, opts.continue);
+        if (prev.error) {
+          log.error(`Session not found: ${opts.continue}`);
+          return;
+        }
+        continueSessionId = opts.continue;
+        const segs = (prev.segments as Array<Record<string, unknown>>) ?? [];
+        const parts: string[] = [`Task: ${prev.task}`];
+        for (const seg of segs) {
+          const segParts: string[] = [`Agent: ${seg.agent}`];
+          if (seg.git_changes) {
+            const gc = typeof seg.git_changes === "string" ? JSON.parse(seg.git_changes as string) : seg.git_changes;
+            if (gc.modified?.length) segParts.push(`Modified: ${gc.modified.join(", ")}`);
+            if (gc.created?.length) segParts.push(`Created: ${gc.created.join(", ")}`);
+          }
+          parts.push(segParts.join(", "));
+        }
+        handoff = `Continuing session ${opts.continue}:\n${parts.join("\n")}`;
+        log.info(`Continuing session ${chalk.bold(opts.continue)} with ${chalk.cyan(agentName)}`);
+
+      } else if (opts.switch) {
+        // Continue last session with different agent
         const sessions = await api.listSessions(projectId, 1);
         if (sessions.length > 0) {
           const last = sessions[0] as Record<string, unknown>;
+          continueSessionId = last.id as string;
           const segs = (last.segments as Array<Record<string, unknown>>) ?? [];
           const lastSeg = segs[segs.length - 1];
           if (lastSeg?.git_changes) {
@@ -71,8 +98,17 @@ export function registerChatCommand(program: Command): void {
           return;
         }
 
-        // Create session on server
-        const session = await api.createSession(projectId, sessionTask, agentName);
+        // Create or continue session
+        let session: { id: string; segmentId: string };
+        if (continueSessionId) {
+          // Append new segment to existing session
+          const seg = await api.updateSession(projectId, continueSessionId, {
+            newAgent: agentName, handoff: handoff ?? "",
+          }) as { segmentId: string };
+          session = { id: continueSessionId, segmentId: seg.segmentId };
+        } else {
+          session = await api.createSession(projectId, sessionTask, agentName);
+        }
 
         // Build context from server + translate
         const ctx = await buildContextString(projectId, agentName, { task: sessionTask, handoff });
@@ -174,8 +210,10 @@ export function registerChatCommand(program: Command): void {
         await api.updateSession(projectId, session.id, { status: "completed" });
         log.success(`Session ${chalk.bold(session.id)} archived.`);
 
-        // Hint about switching
-        log.dim(`To continue with another agent: aihub chat --switch claude-internal`);
+        // Hint
+        log.dim(`Continue this session:  aihub chat --continue ${session.id} --agent <name>`);
+        log.dim(`Switch agent (latest):  aihub chat --switch <agent>`);
+        log.dim(`View history:           aihub sessions list`);
 
       } finally {
         restoreMcp();

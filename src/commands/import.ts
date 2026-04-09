@@ -12,10 +12,10 @@ function getProjectId(): string {
 }
 
 export function registerImportCommand(program: Command): void {
-  const imp = program.command("import").description("Import local agent data into AIHub server");
+  const imp = program.command("import").description("Import local agent data (MCP, skills, memories) into AIHub server");
 
   imp.command("mcp")
-    .description("Import MCP configs from local agent installations")
+    .description("Scan ~/.claude/ and ~/.codebuddy/plugins/ → import MCP configs to server (global→global, project→project)")
     .action(async () => {
       if (!(await api.health())) { log.error("Server not running."); process.exit(1); }
 
@@ -85,7 +85,7 @@ export function registerImportCommand(program: Command): void {
     });
 
   imp.command("memories")
-    .description("Import memories from local agent session logs")
+    .description("Parse agent JSONL session logs → extract memories via LLM summarization")
     .option("-a, --agent <agents>", "Agents to scan (comma-separated)", "claude-internal,codebuddy")
     .option("-n, --limit <n>", "Max memories per session", "5")
     .action(async (opts: { agent: string; limit: string }) => {
@@ -129,7 +129,7 @@ export function registerImportCommand(program: Command): void {
     });
 
   imp.command("skills")
-    .description("Import skills from local agent installations")
+    .description("Scan .claude/commands/ and .codebuddy/skills/ → import custom skills to server")
     .action(async () => {
       if (!(await api.health())) { log.error("Server not running."); process.exit(1); }
 
@@ -184,7 +184,7 @@ export function registerImportCommand(program: Command): void {
     });
 
   imp.command("all")
-    .description("Import everything (MCP + skills + memories)")
+    .description("Import everything: MCP + skills + memories (one-time historical data migration)")
     .action(async () => {
       if (!(await api.health())) { log.error("Server not running."); process.exit(1); }
 

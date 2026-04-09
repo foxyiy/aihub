@@ -8,7 +8,7 @@ import * as log from "../utils/logger.js";
 export function registerInitCommand(program: Command): void {
   program
     .command("init")
-    .description("Register current project with AIHub server")
+    .description("Register project + auto-import local agent configs (MCP, skills) to AIHub server")
     .action(async () => {
       if (!(await api.health())) {
         log.error("Server not running. Start with: aihub server start");
@@ -24,20 +24,33 @@ export function registerInitCommand(program: Command): void {
         log.info(`Detected agents: ${agents.map(a => chalk.cyan(a.displayName)).join(", ")}`);
       }
 
-      // Auto-import MCP and skills from local agents
+      // Auto-import
       const projectId = projectPath.split("/").pop()!;
+      console.log(chalk.bold("\nScanning local agent configs:"));
+
       const mcp = await autoImportMcp(projectId);
       if (mcp.imported > 0) {
-        log.info(`Auto-imported ${mcp.imported} MCP servers: ${mcp.names.join(", ")}`);
-      }
-      const skills = await autoImportSkills(projectId);
-      if (skills.imported > 0) {
-        log.info(`Auto-imported ${skills.imported} skills: ${skills.names.join(", ")}`);
+        console.log(`  ${chalk.green("✓")} MCP:    ${mcp.imported} servers imported (${mcp.names.join(", ")})`);
+      } else {
+        console.log(`  ${chalk.dim("–")} MCP:    ${chalk.dim("no new servers found")}`);
       }
 
+      const skills = await autoImportSkills(projectId);
+      if (skills.imported > 0) {
+        console.log(`  ${chalk.green("✓")} Skills: ${skills.imported} imported (${skills.names.join(", ")})`);
+      } else {
+        console.log(`  ${chalk.dim("–")} Skills: ${chalk.dim("no new skills found")}`);
+      }
+
+      console.log(chalk.bold("\nWhat init does:"));
+      console.log(chalk.dim("  1. Register project with AIHub server"));
+      console.log(chalk.dim("  2. Scan ~/.claude/ and ~/.codebuddy/ for MCP configs → upload to server"));
+      console.log(chalk.dim("  3. Scan .claude/commands/ and .codebuddy/skills/ → upload to server"));
+
+      console.log(chalk.bold("\nNext steps:"));
+      console.log(chalk.dim("  aihub status                        View project data overview"));
+      console.log(chalk.dim("  aihub import all                    Import historical memories from agent logs"));
+      console.log(chalk.dim("  aihub chat \"task\" --agent claude     Start a session"));
       console.log();
-      log.dim("Next steps:");
-      log.dim("  aihub memory add \"your first memory\"");
-      log.dim("  aihub chat \"your task\" --agent claude");
     });
 }

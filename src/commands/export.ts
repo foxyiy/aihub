@@ -7,14 +7,22 @@ import { buildExportInput } from "../core/context-builder.js";
 import { exportForAgent } from "../translators/export/agents.js";
 import * as log from "../utils/logger.js";
 
-const ALL_AGENTS = ["claude", "codex", "cursor", "copilot", "windsurf"];
+const AGENT_FILES: Record<string, string> = {
+  claude: "CLAUDE.md",
+  codex: "AGENTS.md",
+  cursor: ".cursorrules",
+  copilot: ".github/copilot-instructions.md",
+  windsurf: ".windsurfrules",
+};
+
+const ALL_AGENTS = Object.keys(AGENT_FILES);
 
 export function registerExportCommand(program: Command): void {
   program
     .command("export")
-    .description("Export AIHub data to agent-native config files")
-    .option("-a, --agent <agent>", "Specific agent (or 'all')")
-    .option("--dry-run", "Preview without writing")
+    .description("Export AIHub data as agent-native config files into project directory (for use without aihub)")
+    .option("-a, --agent <agent>", "Agent format: claude, codex, cursor, copilot, windsurf (or 'all')")
+    .option("--dry-run", "Preview without writing files")
     .action(async (opts: { agent?: string; dryRun?: boolean }) => {
       if (!(await api.health())) { log.error("Server not running."); process.exit(1); }
 
@@ -23,6 +31,10 @@ export function registerExportCommand(program: Command): void {
 
       const input = await buildExportInput(projectId);
       const agents = opts.agent && opts.agent !== "all" ? [opts.agent] : ALL_AGENTS;
+
+      if (opts.dryRun) {
+        console.log(chalk.bold("\nPreview (--dry-run):\n"));
+      }
 
       for (const agent of agents) {
         try {
@@ -42,6 +54,15 @@ export function registerExportCommand(program: Command): void {
         }
       }
 
-      if (!opts.dryRun) log.info(`Exported to ${agents.length} agents.`);
+      if (!opts.dryRun) {
+        console.log();
+        log.info(`Exported to ${agents.length} agent format(s).`);
+      }
+
+      console.log(chalk.bold("\nWhat export does:"));
+      console.log(chalk.dim("  Writes AIHub rules/context/memories into agent-native files."));
+      console.log(chalk.dim("  This lets agents read the data even without 'aihub chat'."));
+      console.log(chalk.dim("  Files: " + Object.entries(AGENT_FILES).map(([a, f]) => `${a}→${f}`).join(", ")));
+      console.log();
     });
 }

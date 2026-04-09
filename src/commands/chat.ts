@@ -118,12 +118,25 @@ export function registerChatCommand(program: Command): void {
 
         console.log(chalk.dim("─".repeat(50)));
 
-        // Cleanup
+        // ── Post-agent data collection (BEFORE restoring configs) ──
+
+        // 1. Collect new MCP/skills agent may have installed
+        log.dim("Scanning for new configs...");
+        try {
+          const mcp = await autoImportMcp(projectId);
+          if (mcp.imported > 0) log.info(`New MCP servers detected: ${mcp.names.join(", ")}`);
+          const sk = await autoImportSkills(projectId);
+          if (sk.imported > 0) log.info(`New skills detected: ${sk.names.join(", ")}`);
+        } catch {
+          // Non-fatal
+        }
+
+        // 2. Now restore injected configs
         await driver.cleanup(projectPath);
         restoreMcp();
         restoreSkills();
 
-        // Compute git changes
+        // 3. Compute git changes
         log.dim("Collecting changes...");
         const changes = computeChanges(gitBefore, projectPath);
         if (changes.modified.length > 0 || changes.created.length > 0) {
@@ -133,7 +146,7 @@ export function registerChatCommand(program: Command): void {
         // Save to server
         await api.updateSession(projectId, session.id, { git_changes: changes });
 
-        // Auto-add file changes as memory
+        // 4. Auto-add file changes as memory
         if (changes.modified.length > 0 || changes.created.length > 0) {
           const fileList = [...changes.modified, ...changes.created.map(f => `${f} (new)`)].join(", ");
           await api.addMemory(projectId, `Files changed by ${agentName}: ${fileList}`, {
@@ -141,7 +154,7 @@ export function registerChatCommand(program: Command): void {
           });
         }
 
-        // Extract memories from agent logs
+        // 5. Extract memories from agent logs
         log.dim("Extracting memories from agent logs...");
         try {
           const extracted = await extractMemoriesFromLogs(agentName, projectPath, startedAt);
@@ -153,16 +166,6 @@ export function registerChatCommand(program: Command): void {
           if (extracted.length > 0) {
             log.info(`Extracted ${extracted.length} memories from agent logs.`);
           }
-        } catch {
-          // Non-fatal — log extraction is best-effort
-        }
-
-        // Auto-import new MCP/skills that agent may have installed
-        try {
-          const mcp = await autoImportMcp(projectId);
-          if (mcp.imported > 0) log.info(`New MCP servers detected: ${mcp.names.join(", ")}`);
-          const sk = await autoImportSkills(projectId);
-          if (sk.imported > 0) log.info(`New skills detected: ${sk.names.join(", ")}`);
         } catch {
           // Non-fatal
         }

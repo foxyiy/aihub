@@ -13,6 +13,7 @@ import { registerContextCommand } from "../src/commands/context.js";
 import { registerMcpCommand } from "../src/commands/mcp.js";
 import { registerImportCommand } from "../src/commands/import.js";
 import { registerSkillCommand } from "../src/commands/skill.js";
+import { registerUpdateCommand } from "../src/commands/update.js";
 
 const program = new Command();
 program
@@ -32,5 +33,6 @@ registerContextCommand(program);
 registerMcpCommand(program);
 registerImportCommand(program);
 registerSkillCommand(program);
+registerUpdateCommand(program);
 
 program.parse();

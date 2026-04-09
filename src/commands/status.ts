@@ -16,26 +16,35 @@ export function registerStatusCommand(program: Command): void {
       }
 
       const projectId = process.cwd().split("/").pop()!;
-      const [rules, context, memCount, sessions, agents, mcp, skills] = await Promise.all([
+      const [
+        rules, globalRules, context, globalContext,
+        memCount, sessions, agents, mcp, skills, globalSkills,
+      ] = await Promise.all([
         api.getRules(projectId).catch(() => []),
+        api.getGlobalRules().catch(() => []),
         api.getProjectContext(projectId).catch(() => []),
+        api.getGlobalContext().catch(() => []),
         api.memoryCount(projectId).catch(() => 0),
         api.listSessions(projectId, 5).catch(() => []),
         detectAvailable(),
         api.getMcp(projectId).catch(() => ({ servers: {} })),
         api.getSkills(projectId).catch(() => []),
+        api.getGlobalSkills().catch(() => []),
       ]);
 
       const mcpServers = Object.keys((mcp.servers ?? {}) as Record<string, unknown>);
+      const totalRules = rules.length + globalRules.length;
+      const totalContext = context.length + globalContext.length;
+      const totalSkills = [...skills, ...globalSkills];
 
       console.log();
       console.log(chalk.bold(`  AIHub — ${projectId}`));
       console.log(chalk.dim("  ─────────────────────────────────"));
-      console.log(`  📋 Rules:     ${rules.length} files`);
-      console.log(`  📝 Context:   ${context.length} files`);
+      console.log(`  📋 Rules:     ${totalRules} files${globalRules.length > 0 ? chalk.dim(` (${globalRules.length} global)`) : ""}`);
+      console.log(`  📝 Context:   ${totalContext} files${globalContext.length > 0 ? chalk.dim(` (${globalContext.length} global)`) : ""}`);
       console.log(`  🧠 Memories:  ${memCount} entries`);
       console.log(`  🔌 MCP:       ${mcpServers.length > 0 ? mcpServers.join(", ") : chalk.dim("none")}`);
-      console.log(`  ⚡ Skills:    ${skills.length > 0 ? skills.map(s => s.filename.replace(/\.md$/, "")).join(", ") : chalk.dim("none")}`);
+      console.log(`  ⚡ Skills:    ${totalSkills.length > 0 ? totalSkills.map(s => s.filename.replace(/\.md$/, "")).join(", ") : chalk.dim("none")}${globalSkills.length > 0 ? chalk.dim(` (${globalSkills.length} global)`) : ""}`);
       console.log(`  💬 Sessions:  ${sessions.length} recent`);
       console.log(`  🤖 Agents:    ${agents.length > 0 ? agents.map(a => chalk.cyan(a.displayName)).join(", ") : chalk.dim("none")}`);
       console.log(`  🖥  Server:    ${chalk.green("running")}`);

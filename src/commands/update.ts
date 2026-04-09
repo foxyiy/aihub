@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { execSync, spawn } from "node:child_process";
+import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as api from "../client/api.js";
@@ -78,13 +78,12 @@ export function registerUpdateCommand(program: Command): void {
 
           await new Promise(r => setTimeout(r, 1500));
 
-          // Start in background
-          const child = spawn("node", [path.join(aihubDir, "dist", "bin", "aihub.js"), "server", "start"], {
-            cwd: aihubDir,
-            detached: true,
-            stdio: "ignore",
-          });
-          child.unref();
+          // Start in background with nohup
+          const logFile = path.join(aihubDir, "server.log");
+          execSync(
+            `nohup node ${path.join(aihubDir, "dist", "bin", "aihub.js")} server start > ${logFile} 2>&1 &`,
+            { cwd: aihubDir, encoding: "utf-8", timeout: 5000 },
+          );
 
           await new Promise(r => setTimeout(r, 2000));
           if (await api.health()) {

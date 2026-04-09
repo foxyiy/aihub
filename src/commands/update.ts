@@ -1,14 +1,14 @@
 import type { Command } from "commander";
-import { execSync } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import * as path from "node:path";
+import * as api from "../client/api.js";
 import * as log from "../utils/logger.js";
 
 export function registerUpdateCommand(program: Command): void {
   program
     .command("update")
-    .description("Update AIHub to the latest version")
+    .description("Update AIHub to the latest version and restart server")
     .action(async () => {
-      // aihub 的安装目录（bin/aihub.js 往上两级）
       const aihubDir = path.resolve(new URL(".", import.meta.url).pathname, "..", "..");
 
       try {
@@ -22,7 +22,7 @@ export function registerUpdateCommand(program: Command): void {
         }
         console.log(pullResult);
 
-        // npm install (in case dependencies changed)
+        // npm install
         log.info("Installing dependencies...");
         execSync("npm install", { cwd: aihubDir, encoding: "utf-8", timeout: 60000, stdio: "pipe" });
 
@@ -31,7 +31,41 @@ export function registerUpdateCommand(program: Command): void {
         execSync("./node_modules/.bin/tsc", { cwd: aihubDir, encoding: "utf-8", timeout: 30000 });
 
         log.success("AIHub updated successfully!");
-        log.dim("If server is running, restart it: aihub server stop && aihub server start &");
+
+        // Restart server if running
+        const serverWasRunning = await api.health();
+        if (serverWasRunning) {
+          log.info("Restarting server...");
+
+          // Stop
+          try {
+            const pids = execSync("lsof -ti :8642", { encoding: "utf-8" }).trim();
+            if (pids) {
+              for (const pid of pids.split("\n")) {
+                process.kill(parseInt(pid), "SIGTERM");
+              }
+            }
+          } catch { /* no process */ }
+
+          // Wait a moment for port release
+          await new Promise(r => setTimeout(r, 1000));
+
+          // Start in background
+          const child = spawn("node", [path.join(aihubDir, "dist", "bin", "aihub.js"), "server", "start"], {
+            cwd: aihubDir,
+            detached: true,
+            stdio: "ignore",
+          });
+          child.unref();
+
+          // Verify
+          await new Promise(r => setTimeout(r, 2000));
+          if (await api.health()) {
+            log.success("Server restarted.");
+          } else {
+            log.warn("Server may need manual restart: aihub server start &");
+          }
+        }
       } catch (e) {
         log.error(`Update failed: ${(e as Error).message}`);
         process.exit(1);

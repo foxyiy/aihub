@@ -115,6 +115,13 @@ export async function deleteRule(projectId: string, filename: string): Promise<{
   return request(`/projects/${projectId}/rules/${encodeURIComponent(filename)}`, { method: "DELETE" }) as Promise<{ deleted: boolean }>;
 }
 
+export async function putGlobalRule(filename: string, content: string): Promise<{ ok: boolean }> {
+  return request(`/global/rules/${encodeURIComponent(filename)}`, {
+    method: "PUT",
+    body: JSON.stringify({ content }),
+  }) as Promise<{ ok: boolean }>;
+}
+
 // ─── Context (write) ─────────────
 export async function putContext(projectId: string, filename: string, content: string): Promise<{ ok: boolean }> {
   return request(`/projects/${projectId}/context/${encodeURIComponent(filename)}`, {
@@ -125,6 +132,13 @@ export async function putContext(projectId: string, filename: string, content: s
 
 export async function deleteContext(projectId: string, filename: string): Promise<{ deleted: boolean }> {
   return request(`/projects/${projectId}/context/${encodeURIComponent(filename)}`, { method: "DELETE" }) as Promise<{ deleted: boolean }>;
+}
+
+export async function putGlobalContext(filename: string, content: string): Promise<{ ok: boolean }> {
+  return request(`/global/context/${encodeURIComponent(filename)}`, {
+    method: "PUT",
+    body: JSON.stringify({ content }),
+  }) as Promise<{ ok: boolean }>;
 }
 
 // ─── MCP ──────────────────────────

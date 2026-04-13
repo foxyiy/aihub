@@ -12,49 +12,37 @@ function getProjectId(): string {
 }
 
 export function registerImportCommand(program: Command): void {
-  const imp = program.command("import").description("Import local agent data (MCP, skills, memories) into AIHub server");
+  const imp = program.command("import").description("Import local agent data (MCP, rules, context, skills, memories) into AIHub server");
 
   imp.command("mcp")
     .description("Scan ~/.claude/ and ~/.codebuddy/plugins/ → import MCP configs to server (global→global, project→project)")
     .action(async () => {
       if (!(await api.health())) { log.error("Server not running."); process.exit(1); }
 
-      const collected: Record<string, unknown> = {};
+      const globalCollected: Record<string, unknown> = {};
+      const projectCollected: Record<string, unknown> = {};
 
-      // 1. Claude global MCP
+      // 1. Claude global MCP → global
       const claudeGlobal = path.join(os.homedir(), ".claude", "settings.local.json");
       if (fs.existsSync(claudeGlobal)) {
         try {
           const config = JSON.parse(fs.readFileSync(claudeGlobal, "utf-8"));
           if (config.mcpServers) {
-            Object.assign(collected, config.mcpServers);
+            Object.assign(globalCollected, config.mcpServers);
             log.dim(`Claude global: ${Object.keys(config.mcpServers).length} MCP servers`);
           }
         } catch { /* skip */ }
       }
 
-      // 2. Claude project-level MCP
-      const claudeProject = path.join(process.cwd(), ".claude", "settings.local.json");
-      if (fs.existsSync(claudeProject)) {
-        try {
-          const config = JSON.parse(fs.readFileSync(claudeProject, "utf-8"));
-          if (config.mcpServers) {
-            Object.assign(collected, config.mcpServers);
-            log.dim(`Claude project: ${Object.keys(config.mcpServers).length} MCP servers`);
-          }
-        } catch { /* skip */ }
-      }
-
-      // 3. CodeBuddy plugins with .mcp.json
+      // 2. CodeBuddy plugins → global
       const pluginsDir = path.join(os.homedir(), ".codebuddy", "plugins", "marketplaces");
       if (fs.existsSync(pluginsDir)) {
         const mcpFiles = findFiles(pluginsDir, ".mcp.json");
         for (const f of mcpFiles) {
           try {
             const data = JSON.parse(fs.readFileSync(f, "utf-8"));
-            // Two formats: { "name": {...} } or { "mcpServers": { "name": {...} } }
             const servers = data.mcpServers ?? data;
-            Object.assign(collected, servers);
+            Object.assign(globalCollected, servers);
           } catch { /* skip */ }
         }
         if (mcpFiles.length > 0) {
@@ -62,26 +50,57 @@ export function registerImportCommand(program: Command): void {
         }
       }
 
-      if (Object.keys(collected).length === 0) {
+      // 3. Claude project-level MCP → project
+      const claudeProject = path.join(process.cwd(), ".claude", "settings.local.json");
+      if (fs.existsSync(claudeProject)) {
+        try {
+          const config = JSON.parse(fs.readFileSync(claudeProject, "utf-8"));
+          if (config.mcpServers) {
+            Object.assign(projectCollected, config.mcpServers);
+            log.dim(`Claude project: ${Object.keys(config.mcpServers).length} MCP servers`);
+          }
+        } catch { /* skip */ }
+      }
+
+      const totalCollected = Object.keys(globalCollected).length + Object.keys(projectCollected).length;
+      if (totalCollected === 0) {
         log.info("No MCP configs found locally.");
         return;
       }
 
-      // Merge into server
-      const projectId = getProjectId();
-      const current = await api.getMcp(projectId);
-      const existing = (current.servers ?? {}) as Record<string, unknown>;
-      const merged = { ...existing, ...collected };
-      await api.putMcp(projectId, { servers: merged });
+      // Merge global
+      if (Object.keys(globalCollected).length > 0) {
+        const current = await api.getGlobalMcp();
+        const existing = (current.servers ?? {}) as Record<string, unknown>;
+        const merged = { ...existing, ...globalCollected };
+        await api.putGlobalMcp({ servers: merged });
 
-      console.log(chalk.bold(`\nImported ${Object.keys(collected).length} MCP servers:\n`));
-      for (const name of Object.keys(collected)) {
-        const srv = collected[name] as Record<string, unknown>;
-        const cmd = srv.command ?? srv.url ?? "";
-        console.log(`  ${chalk.cyan(name)}  ${chalk.dim(String(cmd))}`);
+        console.log(chalk.bold(`\nImported ${Object.keys(globalCollected).length} global MCP servers:\n`));
+        for (const name of Object.keys(globalCollected)) {
+          const srv = globalCollected[name] as Record<string, unknown>;
+          const cmd = srv.command ?? srv.url ?? "";
+          console.log(`  ${chalk.cyan(name)}  ${chalk.dim(String(cmd))}`);
+        }
       }
+
+      // Merge project
+      if (Object.keys(projectCollected).length > 0) {
+        const projectId = getProjectId();
+        const current = await api.getMcp(projectId);
+        const existing = (current.servers ?? {}) as Record<string, unknown>;
+        const merged = { ...existing, ...projectCollected };
+        await api.putMcp(projectId, { servers: merged });
+
+        console.log(chalk.bold(`\nImported ${Object.keys(projectCollected).length} project MCP servers:\n`));
+        for (const name of Object.keys(projectCollected)) {
+          const srv = projectCollected[name] as Record<string, unknown>;
+          const cmd = srv.command ?? srv.url ?? "";
+          console.log(`  ${chalk.cyan(name)}  ${chalk.dim(String(cmd))}`);
+        }
+      }
+
       console.log();
-      log.success(`Total on server: ${Object.keys(merged).length} MCP servers`);
+      log.success(`Total imported: ${totalCollected} MCP servers (${Object.keys(globalCollected).length} global, ${Object.keys(projectCollected).length} project)`);
     });
 
   imp.command("memories")
@@ -176,6 +195,21 @@ export function registerImportCommand(program: Command): void {
         }
       }
 
+      // 4. CodeBuddy global skills: ~/.codebuddy/skills/*/SKILL.md
+      const cbGlobalSkillsDir = path.join(os.homedir(), ".codebuddy", "skills");
+      if (fs.existsSync(cbGlobalSkillsDir) && cbGlobalSkillsDir !== cbSkillsDir) {
+        const dirs = fs.readdirSync(cbGlobalSkillsDir, { withFileTypes: true }).filter(d => d.isDirectory());
+        for (const d of dirs) {
+          const skillFile = path.join(cbGlobalSkillsDir, d.name, "SKILL.md");
+          if (fs.existsSync(skillFile)) {
+            const content = fs.readFileSync(skillFile, "utf-8");
+            await api.putSkill(projectId, `${d.name}.md`, content);
+            log.dim(`  CodeBuddy global skill: ${d.name}`);
+            imported++;
+          }
+        }
+      }
+
       if (imported > 0) {
         log.success(`Imported ${imported} skills.`);
       } else {
@@ -183,13 +217,179 @@ export function registerImportCommand(program: Command): void {
       }
     });
 
+  imp.command("rules")
+    .description("Scan CLAUDE.md, .claude/, .codebuddy/ → import rule files to server")
+    .action(async () => {
+      if (!(await api.health())) { log.error("Server not running."); process.exit(1); }
+
+      const projectId = getProjectId();
+      const projectDir = process.cwd();
+      const homeDir = os.homedir();
+      let imported = 0;
+
+      // ── Project-level rules ──
+
+      // 1. Root CLAUDE.md (case-insensitive)
+      const rootClaudeMd = findCaseInsensitive(projectDir, "CLAUDE.md");
+      if (rootClaudeMd) {
+        const content = fs.readFileSync(rootClaudeMd, "utf-8");
+        await api.putRule(projectId, "CLAUDE.md", content);
+        log.dim(`  Project: ${path.basename(rootClaudeMd)}`);
+        imported++;
+      }
+
+      // 2. .claude/CLAUDE.md (skip if root already found)
+      if (!rootClaudeMd) {
+        const dotClaudeMd = findCaseInsensitive(path.join(projectDir, ".claude"), "CLAUDE.md");
+        if (dotClaudeMd) {
+          const content = fs.readFileSync(dotClaudeMd, "utf-8");
+          await api.putRule(projectId, "CLAUDE.md", content);
+          log.dim(`  Project: .claude/${path.basename(dotClaudeMd)}`);
+          imported++;
+        }
+      }
+
+      // 3. Other .md files in .claude/ (excluding CLAUDE.md)
+      const dotClaudeDir = path.join(projectDir, ".claude");
+      if (fs.existsSync(dotClaudeDir)) {
+        const files = fs.readdirSync(dotClaudeDir).filter(f => f.endsWith(".md") && f.toUpperCase() !== "CLAUDE.MD");
+        for (const filename of files) {
+          const content = fs.readFileSync(path.join(dotClaudeDir, filename), "utf-8");
+          await api.putRule(projectId, filename, content);
+          log.dim(`  Project: .claude/${filename}`);
+          imported++;
+        }
+      }
+
+      // 4. .codebuddy/CODEBUDDY.md (case-insensitive)
+      const cbMd = findCaseInsensitive(path.join(projectDir, ".codebuddy"), "CODEBUDDY.md");
+      if (cbMd) {
+        const content = fs.readFileSync(cbMd, "utf-8");
+        await api.putRule(projectId, "CODEBUDDY.md", content);
+        log.dim(`  Project: .codebuddy/${path.basename(cbMd)}`);
+        imported++;
+      }
+
+      // 5. .codebuddy/rules/*.md
+      const cbRulesDir = path.join(projectDir, ".codebuddy", "rules");
+      if (fs.existsSync(cbRulesDir)) {
+        const files = fs.readdirSync(cbRulesDir).filter(f => f.endsWith(".md"));
+        for (const filename of files) {
+          const content = fs.readFileSync(path.join(cbRulesDir, filename), "utf-8");
+          await api.putRule(projectId, filename, content);
+          log.dim(`  Project: .codebuddy/rules/${filename}`);
+          imported++;
+        }
+      }
+
+      // ── Global rules ──
+
+      // 6. ~/.claude/CLAUDE.md (case-insensitive)
+      const globalClaudeMd = findCaseInsensitive(path.join(homeDir, ".claude"), "CLAUDE.md");
+      if (globalClaudeMd) {
+        const content = fs.readFileSync(globalClaudeMd, "utf-8");
+        await api.putGlobalRule("CLAUDE.md", content);
+        log.dim(`  Global: ~/.claude/${path.basename(globalClaudeMd)}`);
+        imported++;
+      }
+
+      // 7. Other .md in ~/.claude/ (excluding CLAUDE.md)
+      const globalClaudeDir = path.join(homeDir, ".claude");
+      if (fs.existsSync(globalClaudeDir)) {
+        const files = fs.readdirSync(globalClaudeDir).filter(f => f.endsWith(".md") && f.toUpperCase() !== "CLAUDE.MD");
+        for (const filename of files) {
+          const content = fs.readFileSync(path.join(globalClaudeDir, filename), "utf-8");
+          await api.putGlobalRule(filename, content);
+          log.dim(`  Global: ~/.claude/${filename}`);
+          imported++;
+        }
+      }
+
+      // 8. ~/.codebuddy/CODEBUDDY.md (case-insensitive)
+      const globalCbMd = findCaseInsensitive(path.join(homeDir, ".codebuddy"), "CODEBUDDY.md");
+      if (globalCbMd) {
+        const content = fs.readFileSync(globalCbMd, "utf-8");
+        await api.putGlobalRule("CODEBUDDY.md", content);
+        log.dim(`  Global: ~/.codebuddy/${path.basename(globalCbMd)}`);
+        imported++;
+      }
+
+      if (imported > 0) {
+        log.success(`Imported ${imported} rule files.`);
+      } else {
+        log.info("No rule files found locally.");
+      }
+    });
+
+  imp.command("context")
+    .description("Scan .claude/context/ and .codebuddy/context/ → import context files to server")
+    .action(async () => {
+      if (!(await api.health())) { log.error("Server not running."); process.exit(1); }
+
+      const projectId = getProjectId();
+      const projectDir = process.cwd();
+      let imported = 0;
+
+      // ── Project-level context ──
+
+      // 1. .claude/context/*.md
+      const claudeCtxDir = path.join(projectDir, ".claude", "context");
+      if (fs.existsSync(claudeCtxDir)) {
+        const files = fs.readdirSync(claudeCtxDir).filter(f => f.endsWith(".md"));
+        for (const filename of files) {
+          const content = fs.readFileSync(path.join(claudeCtxDir, filename), "utf-8");
+          await api.putContext(projectId, filename, content);
+          log.dim(`  Project: .claude/context/${filename}`);
+          imported++;
+        }
+      }
+
+      // 2. .codebuddy/context/*.md
+      const cbCtxDir = path.join(projectDir, ".codebuddy", "context");
+      if (fs.existsSync(cbCtxDir)) {
+        const files = fs.readdirSync(cbCtxDir).filter(f => f.endsWith(".md"));
+        for (const filename of files) {
+          const content = fs.readFileSync(path.join(cbCtxDir, filename), "utf-8");
+          await api.putContext(projectId, filename, content);
+          log.dim(`  Project: .codebuddy/context/${filename}`);
+          imported++;
+        }
+      }
+
+      // ── Global context ──
+
+      // 3. ~/.claude/context/*.md
+      const globalCtxDir = path.join(os.homedir(), ".claude", "context");
+      if (fs.existsSync(globalCtxDir)) {
+        const files = fs.readdirSync(globalCtxDir).filter(f => f.endsWith(".md"));
+        for (const filename of files) {
+          const content = fs.readFileSync(path.join(globalCtxDir, filename), "utf-8");
+          await api.putGlobalContext(filename, content);
+          log.dim(`  Global: ~/.claude/context/${filename}`);
+          imported++;
+        }
+      }
+
+      if (imported > 0) {
+        log.success(`Imported ${imported} context files.`);
+      } else {
+        log.info("No context files found locally.");
+      }
+    });
+
   imp.command("all")
-    .description("Import everything: MCP + skills + memories (one-time historical data migration)")
+    .description("Import everything: MCP + rules + context + skills + memories (one-time historical data migration)")
     .action(async () => {
       if (!(await api.health())) { log.error("Server not running."); process.exit(1); }
 
       console.log(chalk.bold("\n=== Importing MCP configs ===\n"));
       await imp.commands.find(c => c.name() === "mcp")?.parseAsync([], { from: "user" });
+
+      console.log(chalk.bold("\n=== Importing rules ===\n"));
+      await imp.commands.find(c => c.name() === "rules")?.parseAsync([], { from: "user" });
+
+      console.log(chalk.bold("\n=== Importing context ===\n"));
+      await imp.commands.find(c => c.name() === "context")?.parseAsync([], { from: "user" });
 
       console.log(chalk.bold("\n=== Importing skills ===\n"));
       await imp.commands.find(c => c.name() === "skills")?.parseAsync([], { from: "user" });
@@ -203,6 +403,14 @@ export function registerImportCommand(program: Command): void {
 }
 
 // ─── Helpers ──────────────────────────────────
+
+/** Find a file in dir by case-insensitive name match, return full path or null */
+function findCaseInsensitive(dir: string, target: string): string | null {
+  if (!fs.existsSync(dir)) return null;
+  const upper = target.toUpperCase();
+  const match = fs.readdirSync(dir).find(f => f.toUpperCase() === upper);
+  return match ? path.join(dir, match) : null;
+}
 
 function findFiles(dir: string, name: string): string[] {
   const results: string[] = [];

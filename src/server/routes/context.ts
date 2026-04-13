@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { getContext, getGlobalContext, putContext, deleteContext } from "../store.js";
+import { getContext, getGlobalContext, putContext, putGlobalContext, deleteContext } from "../store.js";
 
 export function registerContextRoutes(app: FastifyInstance): void {
   app.get<{ Params: { id: string } }>("/projects/:id/context", (req) => {
@@ -9,6 +9,13 @@ export function registerContextRoutes(app: FastifyInstance): void {
   app.get("/global/context", () => {
     return getGlobalContext();
   });
+
+  app.put<{ Params: { file: string }; Body: { content: string } }>(
+    "/global/context/:file", (req) => {
+      putGlobalContext(req.params.file, req.body.content);
+      return { ok: true };
+    }
+  );
 
   app.put<{ Params: { id: string; file: string }; Body: { content: string } }>(
     "/projects/:id/context/:file", (req) => {

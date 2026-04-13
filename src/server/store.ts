@@ -33,6 +33,12 @@ export function putRule(projectId: string, filename: string, content: string): v
   fs.writeFileSync(path.join(dir, filename), content, "utf-8");
 }
 
+export function putGlobalRule(filename: string, content: string): void {
+  const dir = path.join(getDataDir(), "global", "rules");
+  ensureDir(dir);
+  fs.writeFileSync(path.join(dir, filename), content, "utf-8");
+}
+
 export function deleteRule(projectId: string, filename: string): boolean {
   const fp = path.join(projectDir(projectId), "rules", filename);
   if (fs.existsSync(fp)) { fs.unlinkSync(fp); return true; }
@@ -51,6 +57,12 @@ export function getGlobalContext(): MarkdownFile[] {
 
 export function putContext(projectId: string, filename: string, content: string): void {
   const dir = path.join(projectDir(projectId), "context");
+  ensureDir(dir);
+  fs.writeFileSync(path.join(dir, filename), content, "utf-8");
+}
+
+export function putGlobalContext(filename: string, content: string): void {
+  const dir = path.join(getDataDir(), "global", "context");
   ensureDir(dir);
   fs.writeFileSync(path.join(dir, filename), content, "utf-8");
 }

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { getRules, getGlobalRules, putRule, deleteRule } from "../store.js";
+import { getRules, getGlobalRules, putRule, putGlobalRule, deleteRule } from "../store.js";
 
 export function registerRulesRoutes(app: FastifyInstance): void {
   app.get<{ Params: { id: string } }>("/projects/:id/rules", (req) => {
@@ -9,6 +9,13 @@ export function registerRulesRoutes(app: FastifyInstance): void {
   app.get("/global/rules", () => {
     return getGlobalRules();
   });
+
+  app.put<{ Params: { file: string }; Body: { content: string } }>(
+    "/global/rules/:file", (req) => {
+      putGlobalRule(req.params.file, req.body.content);
+      return { ok: true };
+    }
+  );
 
   app.put<{ Params: { id: string; file: string }; Body: { content: string } }>(
     "/projects/:id/rules/:file", (req) => {

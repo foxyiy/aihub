@@ -218,7 +218,7 @@ export function registerImportCommand(program: Command): void {
     });
 
   imp.command("rules")
-    .description("Scan CLAUDE.md, .claude/, .codebuddy/ → import rule files to server")
+    .description("Scan .claude/ and .codebuddy/rules/ → import rule files to server")
     .action(async () => {
       if (!(await api.health())) { log.error("Server not running."); process.exit(1); }
 
@@ -229,27 +229,7 @@ export function registerImportCommand(program: Command): void {
 
       // ── Project-level rules ──
 
-      // 1. Root CLAUDE.md (case-insensitive)
-      const rootClaudeMd = findCaseInsensitive(projectDir, "CLAUDE.md");
-      if (rootClaudeMd) {
-        const content = fs.readFileSync(rootClaudeMd, "utf-8");
-        await api.putRule(projectId, "CLAUDE.md", content);
-        log.dim(`  Project: ${path.basename(rootClaudeMd)}`);
-        imported++;
-      }
-
-      // 2. .claude/CLAUDE.md (skip if root already found)
-      if (!rootClaudeMd) {
-        const dotClaudeMd = findCaseInsensitive(path.join(projectDir, ".claude"), "CLAUDE.md");
-        if (dotClaudeMd) {
-          const content = fs.readFileSync(dotClaudeMd, "utf-8");
-          await api.putRule(projectId, "CLAUDE.md", content);
-          log.dim(`  Project: .claude/${path.basename(dotClaudeMd)}`);
-          imported++;
-        }
-      }
-
-      // 3. Other .md files in .claude/ (excluding CLAUDE.md)
+      // 1. .claude/*.md (excluding CLAUDE.md — that goes to context)
       const dotClaudeDir = path.join(projectDir, ".claude");
       if (fs.existsSync(dotClaudeDir)) {
         const files = fs.readdirSync(dotClaudeDir).filter(f => f.endsWith(".md") && f.toUpperCase() !== "CLAUDE.MD");
@@ -261,16 +241,7 @@ export function registerImportCommand(program: Command): void {
         }
       }
 
-      // 4. .codebuddy/CODEBUDDY.md (case-insensitive)
-      const cbMd = findCaseInsensitive(path.join(projectDir, ".codebuddy"), "CODEBUDDY.md");
-      if (cbMd) {
-        const content = fs.readFileSync(cbMd, "utf-8");
-        await api.putRule(projectId, "CODEBUDDY.md", content);
-        log.dim(`  Project: .codebuddy/${path.basename(cbMd)}`);
-        imported++;
-      }
-
-      // 5. .codebuddy/rules/*.md
+      // 2. .codebuddy/rules/*.md
       const cbRulesDir = path.join(projectDir, ".codebuddy", "rules");
       if (fs.existsSync(cbRulesDir)) {
         const files = fs.readdirSync(cbRulesDir).filter(f => f.endsWith(".md"));
@@ -284,16 +255,7 @@ export function registerImportCommand(program: Command): void {
 
       // ── Global rules ──
 
-      // 6. ~/.claude/CLAUDE.md (case-insensitive)
-      const globalClaudeMd = findCaseInsensitive(path.join(homeDir, ".claude"), "CLAUDE.md");
-      if (globalClaudeMd) {
-        const content = fs.readFileSync(globalClaudeMd, "utf-8");
-        await api.putGlobalRule("CLAUDE.md", content);
-        log.dim(`  Global: ~/.claude/${path.basename(globalClaudeMd)}`);
-        imported++;
-      }
-
-      // 7. Other .md in ~/.claude/ (excluding CLAUDE.md)
+      // 3. ~/.claude/*.md (excluding CLAUDE.md)
       const globalClaudeDir = path.join(homeDir, ".claude");
       if (fs.existsSync(globalClaudeDir)) {
         const files = fs.readdirSync(globalClaudeDir).filter(f => f.endsWith(".md") && f.toUpperCase() !== "CLAUDE.MD");
@@ -305,15 +267,6 @@ export function registerImportCommand(program: Command): void {
         }
       }
 
-      // 8. ~/.codebuddy/CODEBUDDY.md (case-insensitive)
-      const globalCbMd = findCaseInsensitive(path.join(homeDir, ".codebuddy"), "CODEBUDDY.md");
-      if (globalCbMd) {
-        const content = fs.readFileSync(globalCbMd, "utf-8");
-        await api.putGlobalRule("CODEBUDDY.md", content);
-        log.dim(`  Global: ~/.codebuddy/${path.basename(globalCbMd)}`);
-        imported++;
-      }
-
       if (imported > 0) {
         log.success(`Imported ${imported} rule files.`);
       } else {
@@ -322,17 +275,47 @@ export function registerImportCommand(program: Command): void {
     });
 
   imp.command("context")
-    .description("Scan .claude/context/ and .codebuddy/context/ → import context files to server")
+    .description("Scan CLAUDE.md, CODEBUDDY.md, .claude/context/, .codebuddy/context/ → import context files to server")
     .action(async () => {
       if (!(await api.health())) { log.error("Server not running."); process.exit(1); }
 
       const projectId = getProjectId();
       const projectDir = process.cwd();
+      const homeDir = os.homedir();
       let imported = 0;
 
       // ── Project-level context ──
 
-      // 1. .claude/context/*.md
+      // 1. Root CLAUDE.md (case-insensitive)
+      const rootClaudeMd = findCaseInsensitive(projectDir, "CLAUDE.md");
+      if (rootClaudeMd) {
+        const content = fs.readFileSync(rootClaudeMd, "utf-8");
+        await api.putContext(projectId, "CLAUDE.md", content);
+        log.dim(`  Project: ${path.basename(rootClaudeMd)}`);
+        imported++;
+      }
+
+      // 2. .claude/CLAUDE.md (skip if root already found)
+      if (!rootClaudeMd) {
+        const dotClaudeMd = findCaseInsensitive(path.join(projectDir, ".claude"), "CLAUDE.md");
+        if (dotClaudeMd) {
+          const content = fs.readFileSync(dotClaudeMd, "utf-8");
+          await api.putContext(projectId, "CLAUDE.md", content);
+          log.dim(`  Project: .claude/${path.basename(dotClaudeMd)}`);
+          imported++;
+        }
+      }
+
+      // 3. .codebuddy/CODEBUDDY.md (case-insensitive)
+      const cbMd = findCaseInsensitive(path.join(projectDir, ".codebuddy"), "CODEBUDDY.md");
+      if (cbMd) {
+        const content = fs.readFileSync(cbMd, "utf-8");
+        await api.putContext(projectId, "CODEBUDDY.md", content);
+        log.dim(`  Project: .codebuddy/${path.basename(cbMd)}`);
+        imported++;
+      }
+
+      // 4. .claude/context/*.md
       const claudeCtxDir = path.join(projectDir, ".claude", "context");
       if (fs.existsSync(claudeCtxDir)) {
         const files = fs.readdirSync(claudeCtxDir).filter(f => f.endsWith(".md"));
@@ -344,7 +327,7 @@ export function registerImportCommand(program: Command): void {
         }
       }
 
-      // 2. .codebuddy/context/*.md
+      // 5. .codebuddy/context/*.md
       const cbCtxDir = path.join(projectDir, ".codebuddy", "context");
       if (fs.existsSync(cbCtxDir)) {
         const files = fs.readdirSync(cbCtxDir).filter(f => f.endsWith(".md"));
@@ -358,8 +341,26 @@ export function registerImportCommand(program: Command): void {
 
       // ── Global context ──
 
-      // 3. ~/.claude/context/*.md
-      const globalCtxDir = path.join(os.homedir(), ".claude", "context");
+      // 6. ~/.claude/CLAUDE.md (case-insensitive)
+      const globalClaudeMd = findCaseInsensitive(path.join(homeDir, ".claude"), "CLAUDE.md");
+      if (globalClaudeMd) {
+        const content = fs.readFileSync(globalClaudeMd, "utf-8");
+        await api.putGlobalContext("CLAUDE.md", content);
+        log.dim(`  Global: ~/.claude/${path.basename(globalClaudeMd)}`);
+        imported++;
+      }
+
+      // 7. ~/.codebuddy/CODEBUDDY.md (case-insensitive)
+      const globalCbMd = findCaseInsensitive(path.join(homeDir, ".codebuddy"), "CODEBUDDY.md");
+      if (globalCbMd) {
+        const content = fs.readFileSync(globalCbMd, "utf-8");
+        await api.putGlobalContext("CODEBUDDY.md", content);
+        log.dim(`  Global: ~/.codebuddy/${path.basename(globalCbMd)}`);
+        imported++;
+      }
+
+      // 8. ~/.claude/context/*.md
+      const globalCtxDir = path.join(homeDir, ".claude", "context");
       if (fs.existsSync(globalCtxDir)) {
         const files = fs.readdirSync(globalCtxDir).filter(f => f.endsWith(".md"));
         for (const filename of files) {
